@@ -58,8 +58,76 @@ class SimpleClassifier(torch.nn.Module):
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
+        # Only take first image from each batch
+        x = x[:, 0, :]
         x = x.mean(dim=1)
         x = self.fc(x)
+        x = self.softmax(x)
+        return x
+
+
+# Classifier taking 1 image as input with hidden layers
+class SimpleDeepClassifier(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_layers):
+        super().__init__()
+        self.fc_in = torch.nn.Linear(input_dim, hidden_layers[0])
+        self.fc_hidden = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_layers[i], hidden_layers[i + 1])
+            for i in range(len(hidden_layers) - 1)
+        ])
+        self.fc_out = torch.nn.Linear(hidden_layers[-1], output_dim)
+        self.relu = torch.nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        # Only take first image from each batch
+        x = x[:, 0, :]
+        x = x.mean(dim=1)
+        x = self.fc_in(x)
+        x = self.relu(x)
+        for fc in self.fc_hidden:
+            x = fc(x)
+            x = self.relu(x)
+        x = self.fc_out(x)
+        x = self.softmax(x)
+        return x
+
+
+# Classifier taking multiple images as input
+class MultiImageClassifier(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, image_count):
+        super().__init__()
+        self.fc = torch.nn.Linear(input_dim * image_count, output_dim)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        x = self.softmax(x)
+        return x
+
+
+# Classifier taking multiple images as input with hidden layers
+class MultiImageDeepClassifier(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, image_count, hidden_layers):
+        super().__init__()
+        self.fc_in = torch.nn.Linear(input_dim * image_count, hidden_layers[0])
+        self.fc_hidden = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_layers[i], hidden_layers[i + 1])
+            for i in range(len(hidden_layers) - 1)
+        ])
+        self.fc_out = torch.nn.Linear(hidden_layers[-1], output_dim)
+        self.relu = torch.nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)
+        x = self.fc_in(x)
+        x = self.relu(x)
+        for fc in self.fc_hidden:
+            x = fc(x)
+            x = self.relu(x)
+        x = self.fc_out(x)
         x = self.softmax(x)
         return x
 
@@ -72,13 +140,16 @@ class ViTClassifier(torch.nn.Module):
         self.loss_fn = torch.nn.CrossEntropyLoss()
 
     def forward(self, x):
-        enc_outs = []
-        for image_batch in x:
-            enc_out = self.vit(pixel_values=image_batch).last_hidden_state
-            # Only take first token - [CLS]
-            enc_outs.append(enc_out[:, 0, :].unsqueeze(1))
+        if self.vit is None:
+            enc_outs = x
+        else:
+            enc_outs = []
+            for image_batch in x:
+                enc_out = self.vit(pixel_values=image_batch).last_hidden_state
+                # Only take first token - [CLS]
+                enc_outs.append(enc_out[:, 0, :].unsqueeze(1))
 
-        x = torch.cat(enc_outs, dim=1)
+            x = torch.cat(enc_outs, dim=1)
 
         x = self.classifier(x)
 
@@ -89,14 +160,15 @@ class ViTClassifier(torch.nn.Module):
         return self.loss_fn(x, y)
 
     def set_optimizer(self, optimizer, lr):
-        self.optimizer = optimizer(self.parameters(), lr=lr)
+        self.optimizer = optimizer(self.classifier.parameters(), lr=lr)
 
         return self.optimizer
 
     def print_parameters(self):
-        vit_params = sum(p.numel() for p in self.vit.parameters())
-        vit_trainable_params = sum(p.numel() for p in self.vit.parameters() if p.requires_grad)
-        print(f"ViT trainable params: {vit_trainable_params:,} || all params: {vit_params:,} || trainable/all: {vit_trainable_params / vit_params * 100:.2f}%")
+        if self.vit is not None:
+            vit_params = sum(p.numel() for p in self.vit.parameters())
+            vit_trainable_params = sum(p.numel() for p in self.vit.parameters() if p.requires_grad)
+            print(f"ViT trainable params: {vit_trainable_params:,} || all params: {vit_params:,} || trainable/all: {vit_trainable_params / vit_params * 100:.2f}%")
 
         classifier_params = sum(p.numel() for p in self.classifier.parameters())
         classifier_trainable_params = sum(p.numel() for p in self.classifier.parameters() if p.requires_grad)

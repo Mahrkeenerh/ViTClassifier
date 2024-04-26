@@ -13,12 +13,13 @@ class AppDataset(torch.utils.data.Dataset):
             root,
             data_name,
             images_subdir,
-            max_image_stack_size=8,
+            embeds_name,
+            image_stack_size=8,
             device=None,
             seed=None,
             verbose=False
         ):
-        self.max_image_stack_size = max_image_stack_size
+        self.image_stack_size = image_stack_size
 
         seed = seed or random.randint(0, 2 ** 32 - 1)
         self.rnd_state = np.random.RandomState(seed)
@@ -29,9 +30,9 @@ class AppDataset(torch.utils.data.Dataset):
         if self.verbose:
             print("Loading datafile...")
 
-        self._load_datafile(root, data_name, images_subdir)
+        self._load_datafile(root, data_name, images_subdir, embeds_name)
 
-    def _load_datafile(self, root, data_name, images_subdir):
+    def _load_datafile(self, root, data_name, images_subdir, embeds_name):
         data_json = json.load(open(os.path.join(root, data_name), "r", encoding="utf-8"))
         dataset_raw = {
             app["appId"]: {"image_paths": [], "genreId": app["genreId"]}
@@ -64,6 +65,9 @@ class AppDataset(torch.utils.data.Dataset):
         self.label_map = {class_name: i for i, class_name in enumerate(class_names)}
         self.labels = [self.label_map[class_name] for class_name in self.classes]
 
+        self.embeds = None
+        if embeds_name:
+            self.embeds = torch.load(os.path.join(root, embeds_name))
 
     def __len__(self):
         return len(self.image_paths)
@@ -82,19 +86,18 @@ class AppDataset(torch.utils.data.Dataset):
 
         return probabilities
 
-    def __getitem__(self, idx):
-        probabilites = self._generate_probabilities(len(self.image_paths[idx]))
-        generating_count = min(self.max_image_stack_size, len(self.image_paths[idx]))
-        
-        # Random sample from image paths based on probabilities
-        # Choose maximum max_image_stack_size images
-        # If there are less images, return only those
-        image_paths = self.rnd_state.choice(
-            self.image_paths[idx],
-            size=generating_count,
-            replace=False,
-            p=probabilites
-        )
+    def _load_images(self, idx, probabilites):
+        image_paths = []
+
+        # Keep randomly adding images - if less, all will be included at least once
+        while len(image_paths) < self.image_stack_size:
+            generating_count = min(self.image_stack_size - len(image_paths), len(self.image_paths[idx]))
+            image_paths.extend(self.rnd_state.choice(
+                self.image_paths[idx],
+                size=generating_count,
+                replace=False,
+                p=probabilites
+            ))
 
         # Load images
         images = []
@@ -104,6 +107,33 @@ class AppDataset(torch.utils.data.Dataset):
                 torchvision.io.ImageReadMode.RGB
             )
             images.append(image)
+
+        return images
+
+    def _load_embeds(self, idx, probabilites):
+        embed_ids = []
+
+        # Keep randomly adding images - if less, all will be included at least once
+        while len(embed_ids) < self.image_stack_size:
+            generating_count = min(self.image_stack_size - len(embed_ids), len(self.image_paths[idx]))
+            embed_ids.extend(self.rnd_state.choice(
+                range(len(self.image_paths[idx])),
+                size=generating_count,
+                replace=False,
+                p=probabilites
+            ))
+
+        embeds = [self.embeds[idx][embed_id] for embed_id in embed_ids]
+        return embeds
+
+    def __getitem__(self, idx):
+        probabilites = self._generate_probabilities(len(self.image_paths[idx]))
+
+        if self.embeds is None:
+            images = self._load_images(idx, probabilites)
+        else:
+            embeds = self._load_embeds(idx, probabilites)
+            images = torch.stack(embeds).to(self.device)
 
         label = self.labels[idx]
 
@@ -138,6 +168,8 @@ class AppDataLoader(torch.utils.data.DataLoader):
         if self.processor is not None:
             images = self._image_preprocess(images)
             images = images.to(self.device)
+        else:
+            images = torch.stack(images).to(self.device)
 
         labels = torch.tensor(labels)
         labels = labels.to(self.device)
