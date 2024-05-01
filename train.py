@@ -8,8 +8,16 @@ import training
 
 
 def init_run(name):
-    run_is = [int(run.split("_")[-1]) for run in os.listdir("runs")]
-    run_i = sorted(run_is)[-1] + 1 if os.path.exists("runs") else 0
+    if os.path.exists("runs"):
+        run_is = [int(run.split("_")[-1]) for run in os.listdir("runs")]
+
+        if len(run_is) == 0:
+            run_i = 0
+        else:
+            run_i = sorted(run_is)[-1] + 1
+    else:
+        run_i = 0
+
     run_name = f"runs/{name}_{run_i}"
 
     os.makedirs(run_name, exist_ok=True)
@@ -68,7 +76,7 @@ def main():
     run_name = init_run("VitClassifier")
 
     model_config = {
-        "class_type": modeling.MultiImageClassifier,
+        "class_type": modeling.SimpleClassifier,
         # "hidden_layers": [512, 256]
         "hidden_layers": []
     }
@@ -103,7 +111,7 @@ def main():
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_config["epochs"])
     scheduler = modeling.NoScheduler(optimizer)
 
-    train_loader, val_loader = training.load_data(
+    train_loader, val_loader, label_map = training.load_data(
         processor=vit_processor,
         embeds_name=f"vit_full_cls_embeds_{data_config['image_size']}.pt" if data_config['preprocessed'] else None,
         data_config=data_config,
@@ -126,6 +134,7 @@ def main():
         scheduler,
         train_loader,
         val_loader,
+        label_map,
         epochs=train_config["epochs"],
         callbacks=callbacks
     )

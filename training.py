@@ -91,6 +91,16 @@ class LogCallback(Callback):
         self.correct_classes = []
         self.total_classes = []
 
+    def start(self, **kwargs):
+        sorted_label_map = sorted(
+            kwargs["label_map"].items(),
+            key=lambda x: x[0]
+        )
+        self.labels = [label for label, _ in sorted_label_map]
+        self.sort_map = [0] * 17
+        for i, (_, t) in enumerate(sorted_label_map):
+            self.sort_map[t] = i
+
     def before_train_epoch(self, **kwargs):
         self.lrs.append(kwargs["lr"])
 
@@ -101,14 +111,21 @@ class LogCallback(Callback):
         self.val_losses.append(kwargs["val_loss"])
         self.accuracy.append(kwargs["accuracy"])
 
-        self.correct_classes.append(kwargs["correct_classes"])
-        self.total_classes.append(kwargs["total_classes"])
+        correct_classes = [0] * 17
+        total_classes = [0] * 17
+
+        for i in range(17):
+            correct_classes[self.sort_map[i]] = kwargs["correct_classes"][i]
+            total_classes[self.sort_map[i]] = kwargs["total_classes"][i]
+
+        self.correct_classes.append(correct_classes)
+        self.total_classes.append(total_classes)
 
         self.end()
 
     def end(self, **kwargs):
         with open(
-            os.path.join(self.target_dir, "loss.json"),
+            os.path.join(self.target_dir, "dump.json"),
             "w"
         ) as f:
             json.dump(
@@ -116,6 +133,8 @@ class LogCallback(Callback):
                     "train": self.train_losses,
                     "val": self.val_losses,
                     "accuracy": self.accuracy,
+                    "correct_classes": self.correct_classes,
+                    "total_classes": self.total_classes,
                     "lrs": self.lrs
                 },
                 f,
@@ -153,22 +172,38 @@ class LogCallback(Callback):
 
         # Plot correct histogram
         plt.figure(figsize=(10, 5))
-        plt.bar(range(17), self.correct_classes[-1], label="Correct")
-        plt.bar(range(17), self.total_classes[-1], label="Total", alpha=0.5)
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            self.total_classes[-1],
+            label="Total"
+        )
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            self.correct_classes[-1],
+            label="Correct"
+        )
         plt.legend()
         plt.xlabel("Class")
+        plt.xticks(rotation=75)
         plt.ylabel("Count")
         plt.title("Correct predictions by class")
+        plt.tight_layout()
         plt.savefig(os.path.join(self.target_dir, "correct.png"))
         plt.close()
 
         # Plot correct histogram scaled to 0-1
         plt.figure(figsize=(10, 5))
-        plt.bar(range(17), [c / t for c, t in zip(self.correct_classes[-1], self.total_classes[-1])], label="Correct")
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            [c / t for c, t in zip(self.correct_classes[-1], self.total_classes[-1])],
+            label="Correct"
+        )
         plt.legend()
         plt.xlabel("Class")
+        plt.xticks(rotation=75)
         plt.ylabel("Count")
         plt.title("Correct predictions by class scaled to 0-1")
+        plt.tight_layout()
         plt.savefig(os.path.join(self.target_dir, "correct_scaled.png"))
         plt.close()
 
@@ -177,7 +212,7 @@ class LogCallback(Callback):
         for i in range(17):
             plt.plot(
                 [c[i] / t[i] for c, t in zip(self.correct_classes, self.total_classes)],
-                label=f"Class {i}"
+                label=self.labels[i]
             )
         plt.legend()
         plt.xlabel("Epoch")
@@ -231,7 +266,7 @@ def load_data(
         device=device
     )
 
-    return train_loader, val_loader
+    return train_loader, val_loader, dataset.label_map
 
 
 def train(
@@ -240,6 +275,7 @@ def train(
     scheduler,
     train_loader, 
     val_loader,
+    label_map,
     epochs,
     callbacks
 ):
@@ -256,7 +292,10 @@ def train(
     if not isinstance(callbacks, Callbacks):
         callbacks = Callbacks(callbacks)
 
-    callbacks.start(model=vit_classifier)
+    callbacks.start(
+        model=vit_classifier,
+        label_map=label_map
+    )
 
     for epoch in range(epochs):
         optimizer.zero_grad()
