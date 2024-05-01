@@ -73,17 +73,16 @@ def save_config(run_name, model_config, data_config, train_config):
 def main():
     device = torch.device("cuda")
 
-    run_name = init_run("VitClassifier")
+    run_name = init_run("CLS_DeepClassifier")
 
     model_config = {
-        "class_type": modeling.SimpleClassifier,
-        # "hidden_layers": [512, 256]
-        "hidden_layers": []
+        "class_type": modeling.SimpleDeepClassifier,
+        "hidden_layers": [512, 256],
+        # "hidden_layers": []
     }
 
     data_config = {
-        "root": "/home/xbuban1/Games",
-        "data_name": "apps.json",
+        "dataset": "filtered",
         "imbalance_compensation": True,
         "preprocessed": True,
         "image_size": 224,
@@ -114,7 +113,7 @@ def main():
 
     train_loader, val_loader, dataset = training.load_data(
         processor=vit_processor,
-        embeds_name=f"vit_full_cls_embeds_{data_config['image_size']}.pt" if data_config['preprocessed'] else None,
+        embeds_name=f"vit_{data_config['dataset']}_cls_embeds_{data_config['image_size']}.pt" if data_config['preprocessed'] else None,
         data_config=data_config,
         device=device,
         seed=data_config.get("seed", None),

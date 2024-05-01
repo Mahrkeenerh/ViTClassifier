@@ -251,8 +251,8 @@ def load_data(
     seed,
 ):
     dataset = app_dataset.AppDataset(
-        root=data_config["root"],
-        data_name=data_config["data_name"],
+        root="/home/xbuban1/Games",
+        data_name=f'apps_{data_config["dataset"]}.json',
         images_subdir="images",
         embeds_name=embeds_name,
         image_stack_size=data_config["image_stack_size"],
