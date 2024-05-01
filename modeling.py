@@ -1,3 +1,5 @@
+import random
+
 import torch
 import transformers
 
@@ -52,14 +54,17 @@ def load_VED_vit(model_path, image_size, device):
 
 # Classifier taking 1 image as input
 class SimpleClassifier(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, **kwargs):
         super().__init__()
         self.fc = torch.nn.Linear(input_dim, output_dim)
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         # Only take first image from each batch
-        x = x[:, 0, :]
+        # x = x[:, 0, :]
+        # Take a random image from each batch
+        i = random.randint(0, x.size(1) - 1)
+        x = x[:, i, :]
         x = x.mean(dim=1)
         x = self.fc(x)
         x = self.softmax(x)
@@ -68,7 +73,7 @@ class SimpleClassifier(torch.nn.Module):
 
 # Classifier taking 1 image as input with hidden layers
 class SimpleDeepClassifier(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_layers):
+    def __init__(self, input_dim, output_dim, hidden_layers, **kwargs):
         super().__init__()
         self.fc_in = torch.nn.Linear(input_dim, hidden_layers[0])
         self.fc_hidden = torch.nn.ModuleList([
@@ -81,7 +86,10 @@ class SimpleDeepClassifier(torch.nn.Module):
 
     def forward(self, x):
         # Only take first image from each batch
-        x = x[:, 0, :]
+        # x = x[:, 0, :]
+        # Take a random image from each batch
+        i = random.randint(0, x.size(1) - 1)
+        x = x[:, i, :]
         x = x.mean(dim=1)
         x = self.fc_in(x)
         x = self.relu(x)
@@ -95,9 +103,9 @@ class SimpleDeepClassifier(torch.nn.Module):
 
 # Classifier taking multiple images as input
 class MultiImageClassifier(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, image_count):
+    def __init__(self, input_dim, output_dim, image_stack_size, **kwargs):
         super().__init__()
-        self.fc = torch.nn.Linear(input_dim * image_count, output_dim)
+        self.fc = torch.nn.Linear(input_dim * image_stack_size, output_dim)
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -109,9 +117,9 @@ class MultiImageClassifier(torch.nn.Module):
 
 # Classifier taking multiple images as input with hidden layers
 class MultiImageDeepClassifier(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, image_count, hidden_layers):
+    def __init__(self, input_dim, output_dim, image_stack_size, hidden_layers, **kwargs):
         super().__init__()
-        self.fc_in = torch.nn.Linear(input_dim * image_count, hidden_layers[0])
+        self.fc_in = torch.nn.Linear(input_dim * image_stack_size, hidden_layers[0])
         self.fc_hidden = torch.nn.ModuleList([
             torch.nn.Linear(hidden_layers[i], hidden_layers[i + 1])
             for i in range(len(hidden_layers) - 1)
@@ -155,8 +163,14 @@ class ViTClassifier(torch.nn.Module):
 
         return x
 
-    def loss(self, x, y):
-        x = self(x)
+    def loss(self, image_batches=None, y=None, x=None):
+        assert image_batches is not None or x is not None, "Either image_batches or x must be provided"
+        assert image_batches is None or x is None, "Only one of image_batches or x must be provided"
+        assert y is not None, "y must be provided"
+
+        if image_batches is not None:
+            x = self(image_batches)
+
         return self.loss_fn(x, y)
 
     def set_optimizer(self, optimizer, lr):
@@ -179,3 +193,14 @@ class ViTClassifier(torch.nn.Module):
 
     def load_pretrained(self, path):
         self.load_state_dict(torch.load(path))
+
+
+class NoScheduler():
+    def __init__(self, optimizer, **kwargs):
+        self.optimizer = optimizer
+
+    def get_last_lr(self):
+        return [self.optimizer.param_groups[0]["lr"]]
+
+    def step(self):
+        pass

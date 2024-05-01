@@ -1,66 +1,124 @@
+import json
+import os
+
 import torch
 
 import modeling
 import training
 
 
-def main():
-    device = torch.device("cuda")
+def init_run():
+    run_is = [int(run.split("_")[-1]) for run in os.listdir("runs")]
+    run_i = sorted(run_is)[-1] + 1 if os.path.exists("runs") else 0
+    run_name = f"runs/VitClassifier_{run_i}"
 
-    # image_size = 448
-    image_size = 224
-    image_stack_size = 10
-    epochs = 10
+    os.makedirs(run_name, exist_ok=True)
+    print(f"Training run {run_i}")
 
-    preprocessed = True
+    return run_name
+
+
+def get_model(model_config, data_config, device):
+    vit_device = device
+    if data_config["preprocessed"]:
+        vit_device = torch.device("cpu")
 
     vit_model, vit_processor = modeling.load_VED_vit(
         model_path="/home/xbuban1/ved_model",
-        image_size=image_size,
-        device=torch.device("cpu")
+        image_size=data_config["image_size"],
+        device=vit_device
     )
 
-    # classifier = modeling.SimpleClassifier(
-    #     input_dim=vit_model.embeddings.patch_embeddings.projection.out_channels,
-    #     output_dim=17
-    # ).to(device)
-    classifier = modeling.SimpleDeepClassifier(
+    hidden_layers = model_config.get("hidden_layers", None)
+
+    classifier = model_config["class_type"](
         input_dim=vit_model.embeddings.patch_embeddings.projection.out_channels,
         output_dim=17,
-        hidden_layers=[512, 256]
+        hidden_layers=hidden_layers,
+        image_stack_size=data_config["image_stack_size"]
     ).to(device)
-    # classifier = modeling.MultiImageClassifier(
-    #     input_dim=vit_model.embeddings.patch_embeddings.projection.out_channels,
-    #     output_dim=17,
-    #     image_count=image_stack_size
-    # ).to(device)
-    # classifier = modeling.MultiImageDeepClassifier(
-    #     input_dim=vit_model.embeddings.patch_embeddings.projection.out_channels,
-    #     output_dim=17,
-    #     hidden_layers=[512, 256],
-    #     image_count=image_stack_size
-    # ).to(device)
 
     vit_classifier = modeling.ViTClassifier(
-        vit=vit_model if not preprocessed else None,
+        vit=vit_model if not data_config["preprocessed"] else None,
         classifier=classifier
     )
 
+    vit_processor = None if data_config["preprocessed"] else vit_processor
+
+    return vit_classifier, vit_processor
+
+
+def save_config(run_name, model_config, data_config, train_config):
+    model_config = {
+        "class_type": model_config["class_type"].__name__,
+        "hidden_layers": model_config["hidden_layers"]
+    }
+
+    with open(f"{run_name}/config.json", "w") as f:
+        json.dump({
+            "model": model_config,
+            "data": data_config,
+            "train": train_config
+        }, f, indent=4)
+
+
+def main():
+    device = torch.device("cuda")
+
+    run_name = init_run()
+
+    model_config = {
+        "class_type": modeling.MultiImageClassifier,
+        # "hidden_layers": [512, 256]
+        "hidden_layers": []
+    }
+
+    data_config = {
+        "root": "/home/xbuban1/Games",
+        "data_name": "apps.json",
+        "preprocessed": True,
+        "image_size": 224,
+        "image_stack_size": 10,
+        "minibatch_size": 128,
+        "data_split": 0.8,
+        # "seed": 42
+    }
+
+    train_config = {
+        "epochs": 1000,
+        "learning_rate": 1e-3
+    }
+
+    save_config(
+        run_name,
+        model_config,
+        data_config,
+        train_config
+    )
+
+    vit_classifier, vit_processor = get_model(model_config, data_config, device)
     vit_classifier.print_parameters()
 
-    optimizer = vit_classifier.set_optimizer(torch.optim.Adam, lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    optimizer = vit_classifier.set_optimizer(torch.optim.Adam, lr=train_config["learning_rate"])
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_config["epochs"])
+    scheduler = modeling.NoScheduler(optimizer)
 
     train_loader, val_loader = training.load_data(
-        processor=vit_processor if not preprocessed else None,
-        embeds_name=f"vit_cls_embeds_{image_size}.pt" if preprocessed else None,
-        image_size=image_size,
-        image_stack_size=image_stack_size,
-        minibatch_size=128,
-        data_split=0.8,
+        processor=vit_processor,
+        embeds_name=f"vit_full_cls_embeds_{data_config['image_size']}.pt" if data_config['preprocessed'] else None,
+        data_config=data_config,
         device=device,
-        seed=42
+        seed=data_config.get("seed", None),
     )
+
+    callbacks = [
+        training.SaveCallback(
+            run_name=run_name
+        ),
+        training.LogCallback(
+            run_name=run_name
+        )
+    ]
 
     training.train(
         vit_classifier,
@@ -68,7 +126,8 @@ def main():
         scheduler,
         train_loader,
         val_loader,
-        epochs=epochs
+        epochs=train_config["epochs"],
+        callbacks=callbacks
     )
 
 
