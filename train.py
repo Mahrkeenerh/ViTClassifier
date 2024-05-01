@@ -7,10 +7,10 @@ import modeling
 import training
 
 
-def init_run():
+def init_run(name):
     run_is = [int(run.split("_")[-1]) for run in os.listdir("runs")]
     run_i = sorted(run_is)[-1] + 1 if os.path.exists("runs") else 0
-    run_name = f"runs/VitClassifier_{run_i}"
+    run_name = f"runs/{name}_{run_i}"
 
     os.makedirs(run_name, exist_ok=True)
     print(f"Training run {run_i}")
@@ -65,7 +65,7 @@ def save_config(run_name, model_config, data_config, train_config):
 def main():
     device = torch.device("cuda")
 
-    run_name = init_run()
+    run_name = init_run("VitClassifier")
 
     model_config = {
         "class_type": modeling.MultiImageClassifier,
