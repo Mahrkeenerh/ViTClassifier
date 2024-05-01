@@ -89,6 +89,7 @@ class LogCallback(Callback):
         self.accuracy = []
         self.lrs = []
         self.correct_classes = []
+        self.predicted_classes = []
         self.total_classes = []
 
     def start(self, **kwargs):
@@ -112,13 +113,16 @@ class LogCallback(Callback):
         self.accuracy.append(kwargs["accuracy"])
 
         correct_classes = [0] * 17
+        predicted_classes = [0] * 17
         total_classes = [0] * 17
 
         for i in range(17):
             correct_classes[self.sort_map[i]] = kwargs["correct_classes"][i]
+            predicted_classes[self.sort_map[i]] = kwargs["predicted_classes"][i]
             total_classes[self.sort_map[i]] = kwargs["total_classes"][i]
 
         self.correct_classes.append(correct_classes)
+        self.predicted_classes.append(predicted_classes)
         self.total_classes.append(total_classes)
 
         self.end()
@@ -134,6 +138,7 @@ class LogCallback(Callback):
                     "val": self.val_losses,
                     "accuracy": self.accuracy,
                     "correct_classes": self.correct_classes,
+                    "predicted_classes": self.predicted_classes,
                     "total_classes": self.total_classes,
                     "lrs": self.lrs
                 },
@@ -207,6 +212,22 @@ class LogCallback(Callback):
         plt.savefig(os.path.join(self.target_dir, "correct_scaled.png"))
         plt.close()
 
+        # Plot predicted histogram
+        plt.figure(figsize=(10, 5))
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            self.predicted_classes[-1],
+            label="Predicted"
+        )
+        plt.legend()
+        plt.xlabel("Class")
+        plt.xticks(rotation=75)
+        plt.ylabel("Count")
+        plt.title("Predicted classes")
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.target_dir, "predicted.png"))
+        plt.close()
+
         # Plot accuracy by class
         plt.figure(figsize=(10, 5))
         for i in range(17):
@@ -266,7 +287,7 @@ def load_data(
         device=device
     )
 
-    return train_loader, val_loader, dataset.label_map
+    return train_loader, val_loader, dataset
 
 
 def train(
@@ -275,7 +296,7 @@ def train(
     scheduler,
     train_loader, 
     val_loader,
-    label_map,
+    dataset,
     epochs,
     callbacks
 ):
@@ -294,7 +315,7 @@ def train(
 
     callbacks.start(
         model=vit_classifier,
-        label_map=label_map
+        label_map=dataset.label_map
     )
 
     for epoch in range(epochs):
@@ -333,6 +354,7 @@ def train(
             correct = 0
             total = 0
             correct_classes = [0] * 17
+            predicted_classes = [0] * 17
             total_classes = [0] * 17
 
             val_bar = tqdm(
@@ -352,6 +374,7 @@ def train(
 
                 for i in range(len(labels)):
                     total_classes[labels[i]] += 1
+                    predicted_classes[predicted[i]] += 1
                     if labels[i] == predicted[i]:
                         correct_classes[labels[i]] += 1
 
@@ -363,6 +386,7 @@ def train(
                 val_loss=total_loss / len(val_loader),
                 accuracy=correct / total,
                 correct_classes=correct_classes,
+                predicted_classes=predicted_classes,
                 total_classes=total_classes
             )
 

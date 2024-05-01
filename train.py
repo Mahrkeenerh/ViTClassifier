@@ -84,6 +84,7 @@ def main():
     data_config = {
         "root": "/home/xbuban1/Games",
         "data_name": "apps.json",
+        "imbalance_compensation": True,
         "preprocessed": True,
         "image_size": 224,
         "image_stack_size": 10,
@@ -111,13 +112,18 @@ def main():
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_config["epochs"])
     scheduler = modeling.NoScheduler(optimizer)
 
-    train_loader, val_loader, label_map = training.load_data(
+    train_loader, val_loader, dataset = training.load_data(
         processor=vit_processor,
         embeds_name=f"vit_full_cls_embeds_{data_config['image_size']}.pt" if data_config['preprocessed'] else None,
         data_config=data_config,
         device=device,
         seed=data_config.get("seed", None),
     )
+
+    if data_config["imbalance_compensation"]:
+        vit_classifier.set_weights(
+            weights=dataset.class_weights
+        )
 
     callbacks = [
         training.SaveCallback(
@@ -134,7 +140,7 @@ def main():
         scheduler,
         train_loader,
         val_loader,
-        label_map,
+        dataset,
         epochs=train_config["epochs"],
         callbacks=callbacks
     )

@@ -50,12 +50,14 @@ class AppDataset(torch.utils.data.Dataset):
 
         self.image_paths = []
         self.classes = []
+        self.class_counts = {}
 
         # Extract image paths and descriptions into separate lists
         for app_id, app in dataset_raw.items():
             if len(app["image_paths"]) > 0:
                 self.image_paths.append(app["image_paths"])
                 self.classes.append(app["genreId"])
+                self.class_counts[app["genreId"]] = self.class_counts.get(app["genreId"], 0) + 1
             else:
                 if self.verbose:
                     print("No images for", app_id)
@@ -64,6 +66,12 @@ class AppDataset(torch.utils.data.Dataset):
 
         self.label_map = {class_name: i for i, class_name in enumerate(class_names)}
         self.labels = [self.label_map[class_name] for class_name in self.classes]
+
+        size = len(self.labels)
+        self.class_weights = torch.tensor([
+            size / self.class_counts[class_name]
+            for class_name in class_names
+        ]).to(self.device)
 
         self.embeds = None
         if embeds_name:

@@ -163,6 +163,9 @@ class ViTClassifier(torch.nn.Module):
 
         return x
 
+    def set_weights(self, weights):
+        self.loss_fn = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights))
+
     def loss(self, image_batches=None, y=None, x=None):
         assert image_batches is not None or x is not None, "Either image_batches or x must be provided"
         assert image_batches is None or x is None, "Only one of image_batches or x must be provided"
