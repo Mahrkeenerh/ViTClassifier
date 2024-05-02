@@ -65,12 +65,12 @@ class SaveCallback(Callback):
 
     def start(self, **kwargs):
         kwargs["model"].save_pretrained(
-            os.path.join(self.target_dir, "vit_0")
+            os.path.join(self.target_dir, "vit_0.pt")
         )
 
     def after_train_epoch(self, **kwargs):
         kwargs["model"].save_pretrained(
-            os.path.join(self.target_dir, f"vit_{kwargs['epoch'] + 1}")
+            os.path.join(self.target_dir, f"vit_{kwargs['epoch'] + 1}.pt")
         )
 
 
@@ -93,14 +93,9 @@ class LogCallback(Callback):
         self.total_classes = []
 
     def start(self, **kwargs):
-        sorted_label_map = sorted(
-            kwargs["label_map"].items(),
-            key=lambda x: x[0]
-        )
-        self.labels = [label for label, _ in sorted_label_map]
-        self.sort_map = [0] * 17
-        for i, (_, t) in enumerate(sorted_label_map):
-            self.sort_map[t] = i
+        self.labels = [None] * 17
+        for label, i in kwargs["label_map"].items():
+            self.labels[i] = label
 
     def before_train_epoch(self, **kwargs):
         self.lrs.append(kwargs["lr"])
@@ -112,18 +107,9 @@ class LogCallback(Callback):
         self.val_losses.append(kwargs["val_loss"])
         self.accuracy.append(kwargs["accuracy"])
 
-        correct_classes = [0] * 17
-        predicted_classes = [0] * 17
-        total_classes = [0] * 17
-
-        for i in range(17):
-            correct_classes[self.sort_map[i]] = kwargs["correct_classes"][i]
-            predicted_classes[self.sort_map[i]] = kwargs["predicted_classes"][i]
-            total_classes[self.sort_map[i]] = kwargs["total_classes"][i]
-
-        self.correct_classes.append(correct_classes)
-        self.predicted_classes.append(predicted_classes)
-        self.total_classes.append(total_classes)
+        self.correct_classes.append(kwargs["correct_classes"])
+        self.predicted_classes.append(kwargs["predicted_classes"])
+        self.total_classes.append(kwargs["total_classes"])
 
         self.end()
 
@@ -298,6 +284,7 @@ def train(
     val_loader,
     dataset,
     epochs,
+    grad_accum_steps,
     callbacks
 ):
     def get_rolling_loss(rolling_loss, loss):
@@ -320,6 +307,7 @@ def train(
 
     for epoch in range(epochs):
         optimizer.zero_grad()
+        grad_accum_step = 0
 
         callbacks.before_train_epoch(lr=scheduler.get_last_lr()[0])
 
@@ -330,14 +318,22 @@ def train(
         for data in train_bar:
             image_batches, labels = data
 
-            loss = vit_classifier.loss(image_batches, labels).mean()
-            rolling_loss = get_rolling_loss(rolling_loss, loss)
+            loss = vit_classifier.loss(image_batches, labels).mean() / grad_accum_steps
+            rolling_loss = get_rolling_loss(rolling_loss, loss * grad_accum_steps)
 
             train_bar.set_description(
                 f"Epoch {epoch + 1}/{epochs} - Training, Loss: {rolling_loss:.4f}"
             )
 
             loss.backward()
+
+            grad_accum_step += 1
+            if grad_accum_step == grad_accum_steps:
+                grad_accum_step = 0
+                optimizer.step()
+                optimizer.zero_grad()
+
+        if grad_accum_step > 0:
             optimizer.step()
             optimizer.zero_grad()
 

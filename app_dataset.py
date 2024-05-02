@@ -62,7 +62,7 @@ class AppDataset(torch.utils.data.Dataset):
                 if self.verbose:
                     print("No images for", app_id)
 
-        class_names = list(set(self.classes))
+        class_names = sorted(list(set(self.classes)))
 
         self.label_map = {class_name: i for i, class_name in enumerate(class_names)}
         self.labels = [self.label_map[class_name] for class_name in self.classes]
