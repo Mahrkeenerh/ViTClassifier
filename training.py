@@ -86,9 +86,13 @@ class LogCallback(Callback):
 
         self.train_losses = []
         self.val_losses = []
-        self.accuracy = []
+        self.accuracy_1 = []
+        self.accuracy_3 = []
+        self.accuracy_5 = []
         self.lrs = []
-        self.correct_classes = []
+        self.correct_classes_1 = []
+        self.correct_classes_3 = []
+        self.correct_classes_5 = []
         self.predicted_classes = []
         self.total_classes = []
 
@@ -105,9 +109,13 @@ class LogCallback(Callback):
 
     def after_val_epoch(self, **kwargs):
         self.val_losses.append(kwargs["val_loss"])
-        self.accuracy.append(kwargs["accuracy"])
+        self.accuracy_1.append(kwargs["accuracy_1"])
+        self.accuracy_3.append(kwargs["accuracy_3"])
+        self.accuracy_5.append(kwargs["accuracy_5"])
 
-        self.correct_classes.append(kwargs["correct_classes"])
+        self.correct_classes_1.append(kwargs["correct_classes_1"])
+        self.correct_classes_3.append(kwargs["correct_classes_3"])
+        self.correct_classes_5.append(kwargs["correct_classes_5"])
         self.predicted_classes.append(kwargs["predicted_classes"])
         self.total_classes.append(kwargs["total_classes"])
 
@@ -122,8 +130,12 @@ class LogCallback(Callback):
                 {
                     "train": self.train_losses,
                     "val": self.val_losses,
-                    "accuracy": self.accuracy,
-                    "correct_classes": self.correct_classes,
+                    "accuracy_1": self.accuracy_1,
+                    "accuracy_3": self.accuracy_3,
+                    "accuracy_5": self.accuracy_5,
+                    "correct_classes_1": self.correct_classes_1,
+                    "correct_classes_3": self.correct_classes_3,
+                    "correct_classes_5": self.correct_classes_5,
                     "predicted_classes": self.predicted_classes,
                     "total_classes": self.total_classes,
                     "lrs": self.lrs
@@ -144,7 +156,9 @@ class LogCallback(Callback):
         plt.close()
 
         plt.figure(figsize=(10, 5))
-        plt.plot(self.accuracy, label="Accuracy")
+        plt.plot(self.accuracy_1, label="Accuracy top 1")
+        plt.plot(self.accuracy_3, label="Accuracy top 3")
+        plt.plot(self.accuracy_5, label="Accuracy top 5")
         plt.legend()
         plt.xlabel("Epoch")
         plt.ylabel("Accuracy")
@@ -170,8 +184,18 @@ class LogCallback(Callback):
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            self.correct_classes[-1],
-            label="Correct"
+            self.correct_classes_5[-1],
+            label="Correct top 5"
+        )
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            self.correct_classes_3[-1],
+            label="Correct top 3"
+        )
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            self.correct_classes_1[-1],
+            label="Correct top 1"
         )
         plt.legend()
         plt.xlabel("Class")
@@ -186,8 +210,18 @@ class LogCallback(Callback):
         plt.figure(figsize=(10, 5))
         plt.bar(
             [self.labels[i] for i in range(17)],
-            [c / t for c, t in zip(self.correct_classes[-1], self.total_classes[-1])],
-            label="Correct"
+            [c / t for c, t in zip(self.correct_classes_5[-1], self.total_classes[-1])],
+            label="Correct top 5"
+        )
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            [c / t for c, t in zip(self.correct_classes_3[-1], self.total_classes[-1])],
+            label="Correct top 3"
+        )
+        plt.bar(
+            [self.labels[i] for i in range(17)],
+            [c / t for c, t in zip(self.correct_classes_1[-1], self.total_classes[-1])],
+            label="Correct top 1"
         )
         plt.legend()
         plt.xlabel("Class")
@@ -218,7 +252,7 @@ class LogCallback(Callback):
         plt.figure(figsize=(10, 5))
         for i in range(17):
             plt.plot(
-                [c[i] / t[i] for c, t in zip(self.correct_classes, self.total_classes)],
+                [c[i] / t[i] for c, t in zip(self.correct_classes_1, self.total_classes)],
                 label=self.labels[i]
             )
         plt.legend()
@@ -347,9 +381,13 @@ def train(
 
         with torch.no_grad():
             total_loss = 0
-            correct = 0
+            correct_1 = 0
+            correct_3 = 0
+            correct_5 = 0
             total = 0
-            correct_classes = [0] * 17
+            correct_classes_1 = [0] * 17
+            correct_classes_3 = [0] * 17
+            correct_classes_5 = [0] * 17
             predicted_classes = [0] * 17
             total_classes = [0] * 17
 
@@ -366,22 +404,34 @@ def train(
 
                 _, predicted = torch.max(output, 1)
                 total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                correct_1 += (predicted == labels).sum().item()
+                _, predicted_3 = torch.topk(output, 3)
+                correct_3 += sum([1 for i in range(len(labels)) if labels[i] in predicted_3[i]])
+                _, predicted_5 = torch.topk(output, 5)
+                correct_5 += sum([1 for i in range(len(labels)) if labels[i] in predicted_5[i]])
 
                 for i in range(len(labels)):
                     total_classes[labels[i]] += 1
                     predicted_classes[predicted[i]] += 1
                     if labels[i] == predicted[i]:
-                        correct_classes[labels[i]] += 1
+                        correct_classes_1[labels[i]] += 1
+                    if labels[i] in predicted_3[i]:
+                        correct_classes_3[labels[i]] += 1
+                    if labels[i] in predicted_5[i]:
+                        correct_classes_5[labels[i]] += 1
 
                 val_bar.set_description(
-                    f" - Validation, Accuracy: {correct / total:.4f}"
+                    f" - Validation, Accuracy: {correct_1 / total:.4f}"
                 )
 
             callbacks.after_val_epoch(
                 val_loss=total_loss / len(val_loader),
-                accuracy=correct / total,
-                correct_classes=correct_classes,
+                accuracy_1=correct_1 / total,
+                accuracy_3=correct_3 / total,
+                accuracy_5=correct_5 / total,
+                correct_classes_1=correct_classes_1,
+                correct_classes_3=correct_classes_3,
+                correct_classes_5=correct_classes_5,
                 predicted_classes=predicted_classes,
                 total_classes=total_classes
             )
