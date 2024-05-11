@@ -73,6 +73,14 @@ class AppDataset(torch.utils.data.Dataset):
             for class_name in class_names
         ]).to(self.device)
 
+        # Smaller penalization for frequent classes
+        self.class_weights = self.class_weights + self.class_weights.min()
+        # self.class_weights = self.class_weights + self.class_weights.mean()
+        # self.class_weights = self.class_weights + self.class_weights.max()
+
+        # Normalize weights
+        self.class_weights = self.class_weights / self.class_weights.sum()
+
         self.embeds = None
         if embeds_name:
             self.embeds = torch.load(os.path.join(root, embeds_name))
