@@ -343,6 +343,7 @@ def train(
         optimizer.zero_grad()
         grad_accum_step = 0
 
+        vit_classifier.train()
         callbacks.before_train_epoch(lr=scheduler.get_last_lr()[0])
 
         train_bar = tqdm(
@@ -378,6 +379,7 @@ def train(
             epoch=epoch,
             train_loss=rolling_loss
         )
+        vit_classifier.eval()
 
         with torch.no_grad():
             total_loss = 0

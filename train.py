@@ -9,7 +9,7 @@ import training
 
 def init_run(name):
     if os.path.exists("runs"):
-        run_is = [int(run.split("_")[-1]) for run in os.listdir("runs")]
+        run_is = [int(run.split("_")[0]) for run in os.listdir("runs")]
 
         if len(run_is) == 0:
             run_i = 0
@@ -18,7 +18,7 @@ def init_run(name):
     else:
         run_i = 0
 
-    run_name = f"runs/{name}_{run_i}"
+    run_name = f"runs/{run_i}_{name}"
 
     os.makedirs(run_name, exist_ok=True)
     print(f"Training run {run_i}")
@@ -73,28 +73,29 @@ def save_config(run_name, model_config, data_config, train_config):
 def main():
     device = torch.device("cuda")
 
-    run_name = init_run("CLS_DeepClassifier")
+    run_name = init_run("heavy_multi_min_vit")
 
     model_config = {
-        "class_type": modeling.SimpleDeepClassifier,
-        "hidden_layers": [512, 256],
-        # "hidden_layers": []
+        "class_type": modeling.MultiImageClassifier,
+        # "hidden_layers": [512],
+        "hidden_layers": []
     }
 
     data_config = {
-        "dataset": "filtered",
+        "dataset": "heavy",
         "imbalance_compensation": True,
-        "preprocessed": True,
+        "preprocessed": False,
         "image_size": 224,
         "image_stack_size": 10,
-        "minibatch_size": 128,
+        "minibatch_size": 32,
+        "grad_accum_steps": 4,
         "data_split": 0.8,
         # "seed": 42
     }
 
     train_config = {
-        "epochs": 1000,
-        "learning_rate": 1e-3
+        "epochs": 100,
+        "learning_rate": 1e-4
     }
 
     save_config(
@@ -108,8 +109,8 @@ def main():
     vit_classifier.print_parameters()
 
     optimizer = vit_classifier.set_optimizer(torch.optim.Adam, lr=train_config["learning_rate"])
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_config["epochs"])
-    scheduler = modeling.NoScheduler(optimizer)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_config["epochs"])
+    # scheduler = modeling.NoScheduler(optimizer)
 
     train_loader, val_loader, dataset = training.load_data(
         processor=vit_processor,
@@ -123,6 +124,9 @@ def main():
         vit_classifier.set_weights(
             weights=dataset.class_weights
         )
+
+    vit_classifier.load_pretrained_head("/home/xbuban1/ViT_classifier/out_runs/multi/2_multi_classifier_min/models/vit_100.pt")
+    # vit_classifier.load_pretrained("/home/xbuban1/ViT_classifier/out_runs/balancing/2_CLS_min/models/vit_250.pt")
 
     callbacks = [
         training.SaveCallback(
@@ -141,6 +145,7 @@ def main():
         val_loader,
         dataset,
         epochs=train_config["epochs"],
+        grad_accum_steps=data_config["grad_accum_steps"],
         callbacks=callbacks
     )
 

@@ -44,10 +44,10 @@ def load_VED_vit(model_path, image_size, device):
     vit_model.pooler = None
 
     # Freeze the whole model
-    for param in vit_model.parameters():
-        param.requires_grad = False
+    # for param in vit_model.parameters():
+    #     param.requires_grad = False
 
-    vit_model.eval()
+    # vit_model.eval()
 
     return vit_model, vit_processor
 
@@ -59,15 +59,66 @@ class SimpleClassifier(torch.nn.Module):
         self.fc = torch.nn.Linear(input_dim, output_dim)
         self.softmax = torch.nn.Softmax(dim=1)
 
+        self.training = True
+
     def forward(self, x):
-        # Only take first image from each batch
-        # x = x[:, 0, :]
+        def single_pass(x):
+            x = self.fc(x)
+            x = self.softmax(x)
+            return x
+
+        if self.training:
+            # Take a random image from each batch
+            i = random.randint(0, x.size(1) - 1)
+            x = x[:, i, :]
+            x = x.view(x.size(0), -1)
+            x = single_pass(x)
+        else:
+            # Evaluate on all images one by one, then average the results
+            out = torch.zeros(x.size(0), 17).to(x.device)
+            for i in range(x.size(1)):
+                out += single_pass(x[:, i, :].view(x.size(0), -1))
+
+            x = out / x.size(1)
+
+        return x
+
+    def train(self):
+        self.training = True
+
+    def eval(self):
+        self.training = False
+
+
+class EmbedClassifier(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, **kwargs):
+        super().__init__()
+        self.fc = torch.nn.Linear(input_dim * 2, output_dim)
+        self.conv1 = torch.nn.Conv1d(196, 32, kernel_size=1)
+        self.relu1 = torch.nn.ReLU()
+        self.conv2 = torch.nn.Conv1d(32, 1, kernel_size=1)
+        self.relu2 = torch.nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
         # Take a random image from each batch
         i = random.randint(0, x.size(1) - 1)
         x = x[:, i, :]
-        x = x.mean(dim=1)
+
+        # Split output into cls and image embeddings
+        cls = x[:, 0, :]
+        img = x[:, 1:, :]
+        img = img.view(img.size(0), 196, -1)
+        img = self.conv1(img)
+        img = self.relu1(img)
+        img = self.conv2(img)
+        img = self.relu2(img)
+        img = img.view(img.size(0), -1)
+
+        x = torch.cat((cls, img), dim=1)
         x = self.fc(x)
         x = self.softmax(x)
+
         return x
 
 
@@ -85,8 +136,6 @@ class SimpleDeepClassifier(torch.nn.Module):
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
-        # Only take first image from each batch
-        # x = x[:, 0, :]
         # Take a random image from each batch
         i = random.randint(0, x.size(1) - 1)
         x = x[:, i, :]
@@ -148,10 +197,12 @@ class ViTClassifier(torch.nn.Module):
         self.loss_fn = torch.nn.CrossEntropyLoss()
 
     def forward(self, x):
-        if self.vit is None:
-            enc_outs = x
-        else:
+        if self.vit is not None:
             enc_outs = []
+            # i = random.randint(0, x.size(0) - 1)
+            # out = self.vit(pixel_values=x[i, :, :, :, :]).last_hidden_state[:, 0, :].unsqueeze(1)
+            # x = out.unsqueeze(1)
+
             for image_batch in x:
                 enc_out = self.vit(pixel_values=image_batch).last_hidden_state
                 # Only take first token - [CLS]
@@ -162,6 +213,16 @@ class ViTClassifier(torch.nn.Module):
         x = self.classifier(x)
 
         return x
+
+    def train(self):
+        if self.vit is not None:
+            self.vit.train()
+        self.classifier.train()
+
+    def eval(self):
+        if self.vit is not None:
+            self.vit.eval()
+        self.classifier.eval()
 
     def set_weights(self, weights):
         self.loss_fn = torch.nn.CrossEntropyLoss(weight=weights)
@@ -177,7 +238,8 @@ class ViTClassifier(torch.nn.Module):
         return self.loss_fn(x, y)
 
     def set_optimizer(self, optimizer, lr):
-        self.optimizer = optimizer(self.classifier.parameters(), lr=lr)
+        # self.optimizer = optimizer(self.classifier.parameters(), lr=lr)
+        self.optimizer = optimizer(self.parameters(), lr=lr)
 
         return self.optimizer
 
@@ -196,6 +258,12 @@ class ViTClassifier(torch.nn.Module):
 
     def load_pretrained(self, path):
         self.load_state_dict(torch.load(path))
+
+    def load_pretrained_head(self, path):
+        temp_vit = self.vit
+        self.vit = None
+        self.load_state_dict(torch.load(path))
+        self.vit = temp_vit
 
 
 class NoScheduler():
