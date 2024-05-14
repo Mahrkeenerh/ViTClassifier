@@ -1,0 +1,20 @@
+{
+    "model": {
+        "class_type": "SimpleClassifier",
+        "hidden_layers": []
+    },
+    "data": {
+        "dataset": "filtered",
+        "imbalance_compensation": false,
+        "preprocessed": true,
+        "image_size": 448,
+        "image_stack_size": 10,
+        "minibatch_size": 128,
+        "grad_accum_steps": 1,
+        "data_split": 0.8
+    },
+    "train": {
+        "epochs": 1000,
+        "learning_rate": 0.001
+    }
+}
