@@ -443,6 +443,11 @@ We picked the learning rates as the highest possible value without detrimental r
 The number of training epochs depended on the computational requirements of each model. Smaller models ran for 1,000 epochs, medium models for 250 epochs, and the biggest models only ran for 50 epochs. While being among the biggest, the final model ran for 100 epochs, as it did not need to be compared with any other models anymore.
 
 
+### Dataset Split
+
+Our model training process utilized an 80-20 train-evaluation split to ensure robust performance assessment. Specifically, 80% of the dataset was randomly selected for training the model, while the remaining 20% was reserved for evaluation purposes. This random selection process was consistently applied across all model runs. Our dataset contains a sufficiently large number of samples, which ensures that randomly splitting it does not significantly affect the class distributions.
+
+
 ## Attached Files
 
 ### Dataset Sample
