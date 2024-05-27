@@ -90,10 +90,12 @@ class LogCallback(Callback):
         self.accuracy_3 = []
         self.accuracy_5 = []
         self.lrs = []
-        self.correct_classes_1 = []
-        self.correct_classes_3 = []
-        self.correct_classes_5 = []
+        self.correct_classes = []
         self.predicted_classes = []
+        self.correct_class_counts_1 = []
+        self.correct_class_counts_3 = []
+        self.correct_class_counts_5 = []
+        self.predicted_class_counts = []
         self.total_classes = []
 
     def start(self, **kwargs):
@@ -113,10 +115,13 @@ class LogCallback(Callback):
         self.accuracy_3.append(kwargs["accuracy_3"])
         self.accuracy_5.append(kwargs["accuracy_5"])
 
-        self.correct_classes_1.append(kwargs["correct_classes_1"])
-        self.correct_classes_3.append(kwargs["correct_classes_3"])
-        self.correct_classes_5.append(kwargs["correct_classes_5"])
+        self.correct_classes.append(kwargs["correct_classes"])
         self.predicted_classes.append(kwargs["predicted_classes"])
+
+        self.correct_class_counts_1.append(kwargs["correct_class_counts_1"])
+        self.correct_class_counts_3.append(kwargs["correct_class_counts_3"])
+        self.correct_class_counts_5.append(kwargs["correct_class_counts_5"])
+        self.predicted_class_counts.append(kwargs["predicted_class_counts"])
         self.total_classes.append(kwargs["total_classes"])
 
         self.end()
@@ -133,10 +138,10 @@ class LogCallback(Callback):
                     "accuracy_1": self.accuracy_1,
                     "accuracy_3": self.accuracy_3,
                     "accuracy_5": self.accuracy_5,
-                    "correct_classes_1": self.correct_classes_1,
-                    "correct_classes_3": self.correct_classes_3,
-                    "correct_classes_5": self.correct_classes_5,
-                    "predicted_classes": self.predicted_classes,
+                    "correct_classes_1": self.correct_class_counts_1,
+                    "correct_classes_3": self.correct_class_counts_3,
+                    "correct_classes_5": self.correct_class_counts_5,
+                    "predicted_classes": self.predicted_class_counts,
                     "total_classes": self.total_classes,
                     "lrs": self.lrs
                 },
@@ -184,17 +189,17 @@ class LogCallback(Callback):
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            self.correct_classes_5[-1],
+            self.correct_class_counts_5[-1],
             label="Correct top 5"
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            self.correct_classes_3[-1],
+            self.correct_class_counts_3[-1],
             label="Correct top 3"
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            self.correct_classes_1[-1],
+            self.correct_class_counts_1[-1],
             label="Correct top 1"
         )
         plt.legend()
@@ -210,17 +215,17 @@ class LogCallback(Callback):
         plt.figure(figsize=(10, 5))
         plt.bar(
             [self.labels[i] for i in range(17)],
-            [c / t for c, t in zip(self.correct_classes_5[-1], self.total_classes[-1])],
+            [c / t for c, t in zip(self.correct_class_counts_5[-1], self.total_classes[-1])],
             label="Correct top 5"
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            [c / t for c, t in zip(self.correct_classes_3[-1], self.total_classes[-1])],
+            [c / t for c, t in zip(self.correct_class_counts_3[-1], self.total_classes[-1])],
             label="Correct top 3"
         )
         plt.bar(
             [self.labels[i] for i in range(17)],
-            [c / t for c, t in zip(self.correct_classes_1[-1], self.total_classes[-1])],
+            [c / t for c, t in zip(self.correct_class_counts_1[-1], self.total_classes[-1])],
             label="Correct top 1"
         )
         plt.legend()
@@ -236,7 +241,7 @@ class LogCallback(Callback):
         plt.figure(figsize=(10, 5))
         plt.bar(
             [self.labels[i] for i in range(17)],
-            self.predicted_classes[-1],
+            self.predicted_class_counts[-1],
             label="Predicted"
         )
         plt.legend()
@@ -252,7 +257,7 @@ class LogCallback(Callback):
         plt.figure(figsize=(10, 5))
         for i in range(17):
             plt.plot(
-                [c[i] / t[i] for c, t in zip(self.correct_classes_1, self.total_classes)],
+                [c[i] / t[i] for c, t in zip(self.correct_class_counts_1, self.total_classes)],
                 label=self.labels[i]
             )
         plt.legend()
@@ -260,6 +265,32 @@ class LogCallback(Callback):
         plt.ylabel("Accuracy")
         plt.title("Validation accuracy by class")
         plt.savefig(os.path.join(self.target_dir, "accuracy_by_class.png"))
+        plt.close()
+
+        # Confusion matrix
+        confusion_matrix = torch.zeros(17, 17)
+        for correct_classes, predicted_classes in zip(
+            self.correct_classes[-1], self.predicted_classes[-1]
+        ):
+            confusion_matrix[correct_classes, predicted_classes] += 1
+
+        # Normalize by rows
+        confusion_matrix = confusion_matrix / confusion_matrix.sum(1).view(-1, 1)
+
+        plt.figure(figsize=(15, 15))
+        plt.imshow(confusion_matrix, cmap="Blues")
+        # Add numbers to the cells
+        for i in range(17):
+            for j in range(17):
+                plt.text(j, i, f"{confusion_matrix[i, j]:.2f}", ha="center", va="center", color="black")
+        plt.colorbar()
+        plt.xticks(range(17), [self.labels[i] for i in range(17)], rotation=75)
+        plt.yticks(range(17), [self.labels[i] for i in range(17)])
+        plt.xlabel("Predicted")
+        plt.ylabel("Correct")
+        plt.title("Confusion matrix")
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.target_dir, "confusion_matrix.png"))
         plt.close()
 
 
@@ -343,7 +374,7 @@ def train(
         optimizer.zero_grad()
         grad_accum_step = 0
 
-        vit_classifier.train()
+        # vit_classifier.train()
         callbacks.before_train_epoch(lr=scheduler.get_last_lr()[0])
 
         train_bar = tqdm(
@@ -379,7 +410,7 @@ def train(
             epoch=epoch,
             train_loss=rolling_loss
         )
-        vit_classifier.eval()
+        # vit_classifier.eval()
 
         with torch.no_grad():
             total_loss = 0
@@ -387,10 +418,12 @@ def train(
             correct_3 = 0
             correct_5 = 0
             total = 0
-            correct_classes_1 = [0] * 17
-            correct_classes_3 = [0] * 17
-            correct_classes_5 = [0] * 17
-            predicted_classes = [0] * 17
+            correct_classes = []
+            predicted_classes = []
+            correct_class_counts_1 = [0] * 17
+            correct_class_counts_3 = [0] * 17
+            correct_class_counts_5 = [0] * 17
+            predicted_class_counts = [0] * 17
             total_classes = [0] * 17
 
             val_bar = tqdm(
@@ -405,6 +438,10 @@ def train(
                 total_loss += loss.item()
 
                 _, predicted = torch.max(output, 1)
+
+                correct_classes.extend(labels.tolist())
+                predicted_classes.extend(predicted.tolist())
+
                 total += labels.size(0)
                 correct_1 += (predicted == labels).sum().item()
                 _, predicted_3 = torch.topk(output, 3)
@@ -414,13 +451,13 @@ def train(
 
                 for i in range(len(labels)):
                     total_classes[labels[i]] += 1
-                    predicted_classes[predicted[i]] += 1
+                    predicted_class_counts[predicted[i]] += 1
                     if labels[i] == predicted[i]:
-                        correct_classes_1[labels[i]] += 1
+                        correct_class_counts_1[labels[i]] += 1
                     if labels[i] in predicted_3[i]:
-                        correct_classes_3[labels[i]] += 1
+                        correct_class_counts_3[labels[i]] += 1
                     if labels[i] in predicted_5[i]:
-                        correct_classes_5[labels[i]] += 1
+                        correct_class_counts_5[labels[i]] += 1
 
                 val_bar.set_description(
                     f" - Validation, Accuracy: {correct_1 / total:.4f}"
@@ -431,10 +468,12 @@ def train(
                 accuracy_1=correct_1 / total,
                 accuracy_3=correct_3 / total,
                 accuracy_5=correct_5 / total,
-                correct_classes_1=correct_classes_1,
-                correct_classes_3=correct_classes_3,
-                correct_classes_5=correct_classes_5,
+                correct_classes=correct_classes,
                 predicted_classes=predicted_classes,
+                correct_class_counts_1=correct_class_counts_1,
+                correct_class_counts_3=correct_class_counts_3,
+                correct_class_counts_5=correct_class_counts_5,
+                predicted_class_counts=predicted_class_counts,
                 total_classes=total_classes
             )
 
