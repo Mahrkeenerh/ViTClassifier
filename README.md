@@ -189,8 +189,8 @@ Figures on the left are without imbalance compensation, and those on the right a
 
 <div align="center">
     <figure>
-    <img src="runs/imbalance_testing/CLS_SimpleClassifier_imba/logs/correct.png" width="49%"/>
-    <img src="runs/imbalance_testing/CLS_SimpleClassifier/logs/correct.png" width="49%"/>
+    <img src="runs/confused/imba/logs/correct.png" width="49%"/>
+    <img src="runs/confused/balanced/logs/correct.png" width="49%"/>
     <figcaption>Figure: Correctly predicted class counts vs total class counts.</figcaption>
     </figure>
 </div>
@@ -199,9 +199,29 @@ Figures on the left are without imbalance compensation, and those on the right a
 
 <div align="center">
     <figure>
-    <img src="runs/imbalance_testing/CLS_SimpleClassifier_imba/logs/predicted.png" width="49%"/>
-    <img src="runs/imbalance_testing/CLS_SimpleClassifier/logs/predicted.png" width="49%"/>
+    <img src="runs/confused/imba/logs/predicted.png" width="49%"/>
+    <img src="runs/confused/balanced/logs/predicted.png" width="49%"/>
     <figcaption>Figure: Model predictions regardless of the correct class.</figcaption>
+    </figure>
+</div>
+&nbsp;
+
+
+<div align="center">
+    <figure>
+    <img src="runs/confused/imba/logs/confusion_matrix.png" width="75%"/>
+    <br>
+    <figcaption>Figure: No imbalance compensation confusion matrix, scaled by per-class predicted counts.</figcaption>
+    </figure>
+</div>
+&nbsp;
+
+
+<div align="center">
+    <figure>
+    <img src="runs/confused/balanced/logs/confusion_matrix.png" width="75%"/>
+    <br>
+    <figcaption>Figure: Imbalance compensation confusion matrix, scaled by per-class predicted counts.</figcaption>
     </figure>
 </div>
 &nbsp;
@@ -404,6 +424,8 @@ Merullo, Jack, et al. "Linearly mapping from image to text space." arXiv preprin
 
 
 ## Model Architectures
+
+All runs contain configuration files with the classification head class corresponding to these architecture types.
 
 
 ### Simple Classifier
